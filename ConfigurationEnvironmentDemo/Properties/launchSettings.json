@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "ConfigurationEnvironmentDemo": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "KEY5": "value1",
+        "KEY2": "value2",
+        "SECTION1__KEY3": "value3",
+        "SECTION1__SECTION2__KEY4": "value4",
+        "WZL_KEY5": "wzl_value5"
+      }
+    }
+  }
+}
