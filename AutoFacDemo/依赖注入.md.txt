@@ -1,0 +1,132 @@
+# 依赖注入
+## 为什么要使用依赖注入
+#### .net core 提供了容器作为对象生命周期管理的方式，项目程序中所用到的对象都可以交给程序进行创建和销毁，开发时不用去关心对象的生命周期，让开发者更专注于业务代码的实现。
+## 容器管理对象的生命周期
+#### 1. Singleton
+##### 单例模式，当注入类的实例对象需要被程序所共享时，就可以使用单例模式进行类的注入。
+##### 使用场景：例如redis缓存、日志记录需要程序全局使用
+#### 2. Scoped
+##### 在同一个Scope内只初始化一个实例 ，可以理解为（ 每一个request级别只创建一个实例，同一个http request会在一个 scope内）
+##### 使用场景：controller所用到的服务实例，数据库上下文dbcontext
+#### 3. Transient 
+##### 瞬时模式，每次getService都会创建一个新实例,保证实例对象的唯一性
+## 如何进行注册和获取
+##### 在.Net Core中DI的核心分为两个组件：IServiceCollection和 IServiceProvider。
+- ##### IServiceCollection(Microsoft.Extensions.DependencyInjection) 负责注册接口
+```csharp
+public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddSingleton<IService>();
+            //默认容器注册
+            services.AddControllers();
+        }
+```
+- ##### IServiceProvider(Microsoft.Extensions.DependencyInjection) 负责提供实例，也可通过构造函数来获取或者FromService标签
+##### 1.IServiceProvider提供实例的方式获取容器中的实例对象
+```csharp
+            var provider = services.BuildServiceProvider();
+            provider.GetService<IService>();
+```
+##### 2.构造函数通过属性注入方式获取容器中的实例对象
+```csharp
+        /// <summary>
+        /// 数据库连接
+        /// </summary>
+        protected IDbConnection connection;
+
+        /// <inheritdoc />
+        public Repository(IDbConnection connection)
+        {
+            this.connection = connection;
+        }
+```
+##### 3.通过标签来获取容器中的实例对象
+```csharp
+        [HttpPost]
+        public ResponseResult<PageResult<GetItemDataByLessonIdsResponse>> GetItemDataByLessonIds(GetItemDataByLessonIdsRequest req, 
+            [FromServices]IItemAggregateService itemAggregateService,
+            [FromServices]ILessonAggregateService lessonAggregateService,
+            CurrentUser currentUser
+```
+##### 第二种和第三种的区别：当类的中所有的方法需要实例对象时可以使用第二种方式，当类中的方法按需实例对象时使用第三种方式。
+
+## 利用AutoFac进行依赖注入的实现
+### 1. 引入所需要的nuget包
+- #### Autofac.Extensions.DependencyInjection
+- #### Autofac.Extras.DynamicProxy
+
+### 2. 在program程序主入口添加如下代码
+
+```csharp
+ public static IHostBuilder CreateHostBuilder(string[] args) =>
+            Host.CreateDefaultBuilder(args)
+                //注册第三方容器的入口（注册Autofac容器）
+                .UseServiceProviderFactory(new AutofacServiceProviderFactory())
+                .ConfigureWebHostDefaults(webBuilder =>
+                {
+                    webBuilder.UseStartup<Startup>();
+                });
+```
+
+### 3.注入服务
+##### 在startup.cs文件中添加ConfigureContainer，当执行完ConfigureServices方法后就会立即执行ConfigureContainer方法，也就是说ConfigureContainer方法会覆盖掉ConfigureServices方法。用AutoFac包的ContainerBuilder进行服务的注册
+```csharp
+public void ConfigureContainer(ContainerBuilder builder) 
+        {
+            //接口注册方式
+            
+            //builder.RegisterType<MyServiceV2>().As<IService>();
+            //builder.RegisterType<MyService>().As<IService>();
+
+            //命名注册方式
+            // builder.RegisterType<MyService>().Named<IService>("myService");
+
+            //属性注册方式,公有属性才能注册成功，私有属性注册不成功
+            //builder.RegisterType<ServiceName>();
+            //builder.RegisterType<MyServiceV2>().Named<IService>("myServiceV2").PropertiesAutowired();
+
+            //aop
+            //属性注册
+            //builder.RegisterType<ServiceName>();
+            //注册拦截器
+            //builder.RegisterType<Interceptor>();
+            //aop拦截方法
+            //builder.RegisterType<MyServiceV2>().As<IService>().PropertiesAutowired().InterceptedBy(typeof(Interceptor)).EnableInterfaceInterceptors();
+
+            //子容器
+            builder.RegisterType<MyService>().As<IService>().InstancePerMatchingLifetimeScope("myScope");
+        }
+```
+
+### 4.获取服务
+##### 获取autofac的根容器来获取对象实例
+```csharp
+        private ILifetimeScope AutofacContainer { get; set; }
+        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        {
+
+            //获取Autofac的根容器
+            this.AutofacContainer = app.ApplicationServices.GetAutofacRoot();
+
+            //从容器中获取实例
+            //var myService = this.AutofacContainer.Resolve<IService>();
+            //var myService1 = this.AutofacContainer.Resolve<IService>();
+
+            //myService.ShowMyCode();
+            //myService1.ShowMyCode();
+
+            //命名注册方式从容器中获取实例
+            // var myServiceV2 = this.AutofacContainer.ResolveNamed<IService>("myServiceV2");
+
+            // myService.ShowMyCode();
+            // myServiceV2.ShowMyCode();
+            //获取子容器里的对象(子容器里的对象是单例模式的)
+            using (var container = AutofacContainer.BeginLifetimeScope("myScope"))
+            {
+                var service = container.Resolve<IService>();
+                var service1 = container.Resolve<IService>();
+                service.ShowMyCode();
+                service1.ShowMyCode();
+            }
+```
