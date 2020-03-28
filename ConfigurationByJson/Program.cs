@@ -21,6 +21,7 @@ namespace ConfigurationByJson
 
             var section = configurationRoot.GetSection("JsonSection1");
 
+
             Console.WriteLine($"JsonKey1:{configurationRoot["JsonKey1"]}");
 
             Console.WriteLine($"JsonSection1-Key1:{section["JsonSection1-Key1"]}");
